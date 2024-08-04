@@ -3,7 +3,7 @@ docker run --name postgres-omop -e POSTGRES_PASSWORD=mysecretpassword -p 5432:54
 #create a database
 docker exec -it postgres-omop psql -U postgres -c "CREATE DATABASE omop;"
 
-#copy the create table sql file to postgres container
+#copy the ddl.create table sql file to postgres container
 docker cp "$(pwd)/ddl_scripts/ddl.sql" postgres-omop:/ 
 
 #create ddl schema if not already exits, also creates table from ddl.sql
@@ -35,12 +35,46 @@ docker network connect etl-network postgres-omop
 
 
 #copying csv and etl script to spark-container
-docker cp etl_scripts/fitbit_to_omop_etl.py spark-master:/opt/bitnami/spark
-docker cp etl_scripts/fitbit_data.csv spark-master:/opt/bitnami/spark 
+docker cp etl_scripts/person_etl.py spark-master:/opt/bitnami/spark
+docker cp etl_scripts/sample_person_data.csv spark-master:/opt/bitnami/spark 
 
 
 #running the etl script
 docker exec -it spark-master spark-submit \
   --master "local[*]" \
   --packages org.postgresql:postgresql:42.2.18 \
-  /opt/bitnami/spark/fitbit_to_omop_etl.py
+  /opt/bitnami/spark/person_etl.py
+
+#viewing the data in person table
+docker exec -it postgres-omop psql -U postgres -d omop -c "SELECT * FROM cdmDatabaseSchema.person LIMIT 10;"
+
+
+#COPYING fir bit csv and fitbit etl to spark contianer
+docker cp etl_scripts/fitbit_dummy_data.csv spark-master:/opt/bitnami/spark
+docker cp etl_scripts/fitbit_etl.py spark-master:/opt/bitnami/spark
+
+#running the script
+docker exec -it spark-master spark-submit \
+  --master "local[*]" \
+  --packages org.postgresql:postgresql:42.2.18 \
+  /opt/bitnami/spark/fitbit_etl.py
+
+
+#seeing the table
+docker exec -it postgres-omop psql -U postgres -d omop -c "SELECT * FROM cdmDatabaseSchema.measurement;"
+
+
+
+# STARTING WHEN docker, database , data is set up already
+docker start postgres-omop
+docker start spark-master
+docker network connect etl-network postgres-omop
+-- Check if the omop database and schema still exist:
+docker exec -it postgres-omop psql -U postgres -d omop -c "\dt cdmDatabaseSchema.*"
+
+-- verify data
+docker exec -it postgres-omop psql -U postgres -d omop -c "SELECT * FROM cdmDatabaseSchema.person LIMIT 10;"
+docker exec -it postgres-omop psql -U postgres -d omop -c "SELECT * FROM cdmDatabaseSchema.measurement LIMIT 10;"
+
+
+
